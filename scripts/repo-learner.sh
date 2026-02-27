@@ -106,6 +106,12 @@ learn_repo() {
   repo=$(parse_repo "$input")
   local cache_flag="$CACHE_DIR/${repo//\//_}.learned"
 
+  # 已学习过则跳过，避免重复写入
+  if [ -f "$cache_flag" ]; then
+    log "⏭  $repo 已在缓存中，跳过（删除 $cache_flag 可强制重新学习）"
+    return 0
+  fi
+
   log "开始学习仓库：$repo"
 
   # ── 获取仓库基本信息 ──
