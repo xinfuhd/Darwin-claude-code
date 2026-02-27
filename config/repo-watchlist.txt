@@ -12,6 +12,12 @@
 anthropics/anthropic-cookbook
 anthropics/claude-code
 
+# ── 投资 & 量化分析 ──────────────────────────────────────
+ranaroussi/yfinance          # 获取股票/ETF历史数据（Yahoo Finance）
+microsoft/qlib               # 微软量化投资平台，含因子、回测、模型
+twopirllc/pandas-ta          # 技术指标库（MA/RSI/MACD/布林带等）
+mementum/backtrader          # 策略回测框架
+
 # ── 根据你的技术栈添加（取消注释） ──────────────────────
 
 # Python 开发
