@@ -60,6 +60,7 @@ cmd_setup() {
     "$HOME/Documents/Obsidian" \
     "$HOME/Obsidian" \
     "$HOME/obsidian" \
+    "$HOME/obsidian-vault" \
     "$HOME/Desktop/Obsidian" \
     "$HOME/OneDrive/Obsidian" \
     "$HOME/iCloud Drive/Obsidian"
@@ -136,10 +137,8 @@ cmd_import() {
   local notes=()
 
   if [ -n "$filter" ]; then
-    # 按路径或名称过滤
     mapfile -t notes < <(find "$OBSIDIAN_VAULT" -name "*.md" -path "*${filter}*" 2>/dev/null | sort)
   else
-    # 找到包含导入标签的笔记
     mapfile -t notes < <(grep -rl "$search_tag" "$OBSIDIAN_VAULT" --include="*.md" 2>/dev/null | sort)
   fi
 
@@ -154,13 +153,11 @@ cmd_import() {
   echo "找到 ${#notes[@]} 个笔记，准备导入..."
   echo ""
 
-  # 确保知识库文件存在
   [ ! -f "$KNOWLEDGE_FILE" ] && {
     mkdir -p "$(dirname "$KNOWLEDGE_FILE")"
     echo "# 龙虾知识库" > "$KNOWLEDGE_FILE"
   }
 
-  # 导入标记区间
   local import_marker="## 来自 Obsidian 的笔记"
   local timestamp
   timestamp=$(date '+%Y-%m-%d %H:%M')
@@ -173,7 +170,6 @@ cmd_import() {
     local word_count
     word_count=$(wc -w < "$note_path")
 
-    # 跳过太短的笔记（少于20个词）
     if [ "$word_count" -lt 20 ]; then
       log "  跳过（内容太短）：$note_name"
       continue
@@ -181,13 +177,11 @@ cmd_import() {
 
     echo "  导入：$note_name （$word_count 词）"
 
-    # 追加到 CLAUDE.md
     {
       echo ""
       echo "### 📝 Obsidian: $note_name"
       echo "> 导入时间: $timestamp | 来源: ${note_path#$OBSIDIAN_VAULT/}"
       echo ""
-      # 截取前 3000 字符，避免单篇笔记占用太多空间
       echo "$content" | head -c 3000
       if [ "${#content}" -gt 3000 ]; then
         echo ""
@@ -215,7 +209,6 @@ cmd_export() {
 
   log "开始导出到 Obsidian（目录：$export_dir）"
 
-  # 导出整个知识库为一个 Obsidian 笔记
   local export_file="$export_dir/龙虾知识库总览.md"
   local timestamp
   timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -234,13 +227,11 @@ cmd_export() {
 
   echo "✅ 已导出到：$export_file"
 
-  # 同时把学过的每个仓库导出为独立笔记
   local repo_dir="$export_dir/仓库笔记"
   mkdir -p "$repo_dir"
 
   local repo_count=0
   if grep -q "^### 📦 " "$KNOWLEDGE_FILE" 2>/dev/null; then
-    # 解析每个仓库条目，分别保存
     python3 - "$KNOWLEDGE_FILE" "$repo_dir" << 'PYEOF'
 import sys, re, os
 
@@ -250,13 +241,11 @@ repo_dir = sys.argv[2]
 with open(filepath, 'r') as f:
     content = f.read()
 
-# 按仓库条目分割
 sections = re.split(r'\n(?=### 📦 )', content)
 count = 0
 for section in sections:
     if not section.startswith('### 📦 '):
         continue
-    # 提取仓库名
     first_line = section.split('\n')[0]
     repo_name = first_line.replace('### 📦 ', '').strip()
     safe_name = repo_name.replace('/', '_').replace(' ', '_')
