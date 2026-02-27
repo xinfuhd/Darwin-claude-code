@@ -1,0 +1,35 @@
+# 龙虾仓库观察列表
+# 每次 claude 会话启动（间隔24小时）会自动学习这些仓库
+# 格式：
+#   owner/repo          — 直接指定仓库
+#   https://github.com/owner/repo  — 完整URL也支持
+#   search:关键词       — 搜索并学习 Top 3 结果
+#
+# 编辑完成后，重启 claude 或运行：
+#   ~/.claude/scripts/repo-learner.sh watchlist
+
+# ── 官方文档 & 工具 ─────────────────────────────────────
+anthropics/anthropic-cookbook
+anthropics/claude-code
+
+# ── 根据你的技术栈添加（取消注释） ──────────────────────
+
+# Python 开发
+# psf/requests
+# tiangolo/fastapi
+# search:python best practices 2024
+
+# Node.js / TypeScript
+# microsoft/TypeScript
+# search:nodejs production best practices
+
+# DevOps / VPS 运维
+# search:vps deployment automation
+# search:nginx configuration best practices
+
+# AI / LLM 相关
+# search:llm agent framework python
+# run-llama/llama_index
+
+# 你的私有仓库（需要 GitHub Token 有对应权限）
+# your-username/your-private-repo
