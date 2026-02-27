@@ -239,7 +239,7 @@ learn_watchlist() {
 
     # 检查是否是搜索查询（以 search: 开头）
     if [[ "$line" =~ ^search:(.+)$ ]]; then
-      search_and_learn "${BASH_REMATCH[1]// /}"
+      search_and_learn "${BASH_REMATCH[1]}"
     else
       learn_repo "$line"
     fi
