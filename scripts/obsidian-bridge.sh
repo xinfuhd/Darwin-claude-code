@@ -261,6 +261,10 @@ PYEOF
     echo "✅ 已导出 $repo_count 个仓库独立笔记到：$repo_dir"
   fi
 
+  # 同时生成 knowledge.md（英文名，方便 FinalShell 下载）
+  cp "$export_file" "$export_dir/knowledge.md"
+  echo "✅ 同步生成：$export_dir/knowledge.md"
+
   log "导出完成：总览笔记 + $repo_count 个仓库笔记"
 }
 
