@@ -207,3 +207,20 @@
 ## 学习记录
 
 <!-- 龙虾手动总结追加区域 -->
+
+### 2026-02-28｜SessionStart 钩子输出对用户不可见
+
+**问题**：配置了 SessionStart hook，脚本正常执行，但用户在浏览器开新对话时什么都看不到。
+
+**根本原因**：
+- 钩子的 stdout 被 Claude Code 注入为 `system-reminder`（系统上下文）
+- system-reminder 只有 Claude 能读取，**不在聊天 UI 中显示**
+- Claude 不会主动发送消息，必须等用户先说话
+
+**解决方案**：在 CLAUDE.md 增加强制指令——Claude 首次回复任何消息时，必须在开头主动输出一行状态摘要，把钩子信息"转播"给用户。
+
+**教训**：钩子适合给 Claude 注入上下文，不适合直接给用户展示信息。想让用户看到，必须让 Claude 主动说出来。
+
+**影响的文件**：
+- `/root/.claude/CLAUDE.md` — 新增"首次回复必须输出状态行"规则
+- `config/CLAUDE.md.template` — 同步更新（已 commit & push）
