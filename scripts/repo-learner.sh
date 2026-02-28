@@ -39,13 +39,13 @@ parse_repo() {
 # GitHub API 请求
 gh_api() {
   local path="$1"
-  local auth_header=""
-  [ -n "${GITHUB_TOKEN:-}" ] && auth_header="-H \"Authorization: Bearer $GITHUB_TOKEN\""
+  local -a auth_args=()
+  [ -n "${GITHUB_TOKEN:-}" ] && auth_args=("-H" "Authorization: Bearer $GITHUB_TOKEN")
 
-  eval curl -s \
+  curl -s \
     -H "Accept: application/vnd.github.v3+json" \
     -H "User-Agent: darwin-claude-learner/1.0" \
-    $auth_header \
+    "${auth_args[@]}" \
     "https://api.github.com/$path"
 }
 
