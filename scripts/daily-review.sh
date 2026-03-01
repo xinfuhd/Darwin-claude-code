@@ -14,7 +14,6 @@ MODEL_LOG="$CLAUDE_DIR/model-log.md"
 REVIEW_FILE="$CLAUDE_DIR/daily-review.md"
 HANDOVER_FILE="$CLAUDE_DIR/handover.md"
 TODAY=$(date '+%Y-%m-%d')
-YESTERDAY_TS=$(date -d '24 hours ago' '+%Y-%m-%d' 2>/dev/null || date -v-24H '+%Y-%m-%d' 2>/dev/null || echo "")
 
 # ── 统计指标 ────────────────────────────────────────────────
 

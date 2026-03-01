@@ -5,12 +5,16 @@
 #
 # 用法：
 #   repo-learner.sh learn <owner/repo 或完整URL>
+#   repo-learner.sh learn --force <owner/repo>   # 强制重新学习
 #   repo-learner.sh search <关键词>
 #   repo-learner.sh watchlist          # 学习观察列表里所有仓库
 #   repo-learner.sh summary            # 显示当前知识库摘要
 # =============================================================
 
 set -euo pipefail
+
+# 是否强制重新学习（跳过缓存）
+FORCE_LEARN=0
 
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 KNOWLEDGE_FILE="$CLAUDE_DIR/CLAUDE.md"
@@ -36,17 +40,35 @@ parse_repo() {
   echo "$input"
 }
 
-# GitHub API 请求
+# GitHub API 请求（不使用 eval，避免命令注入）
 gh_api() {
   local path="$1"
-  local auth_header=""
-  [ -n "${GITHUB_TOKEN:-}" ] && auth_header="-H \"Authorization: Bearer $GITHUB_TOKEN\""
+  local args=(
+    curl -s
+    -H "Accept: application/vnd.github.v3+json"
+    -H "User-Agent: darwin-claude-learner/1.0"
+  )
+  # Token 作为独立参数传递，避免 shell 注入
+  [ -n "${GITHUB_TOKEN:-}" ] && args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 
-  eval curl -s \
-    -H "Accept: application/vnd.github.v3+json" \
-    -H "User-Agent: darwin-claude-learner/1.0" \
-    $auth_header \
-    "https://api.github.com/$path"
+  "${args[@]}" "https://api.github.com/$path"
+}
+
+# 检查 GitHub API 速率限制，剩余次数不足时暂停
+check_rate_limit() {
+  local remaining
+  remaining=$(gh_api "rate_limit" 2>/dev/null | jq -r '.rate.remaining // 60' 2>/dev/null || echo 60)
+  if [ "$remaining" -lt 5 ]; then
+    local reset_ts
+    reset_ts=$(gh_api "rate_limit" 2>/dev/null | jq -r '.rate.reset // 0' 2>/dev/null || echo 0)
+    local now
+    now=$(date +%s)
+    local wait_secs=$(( reset_ts - now + 5 ))
+    if [ "$wait_secs" -gt 0 ] && [ "$wait_secs" -lt 3660 ]; then
+      log "⚠ GitHub API 剩余次数不足（$remaining），等待 ${wait_secs}s 后恢复..."
+      sleep "$wait_secs"
+    fi
+  fi
 }
 
 # 获取文件内容（base64解码）
@@ -106,17 +128,28 @@ learn_repo() {
   repo=$(parse_repo "$input")
   local cache_flag="$CACHE_DIR/${repo//\//_}.learned"
 
-  # 已学习过则跳过，避免重复写入
-  if [ -f "$cache_flag" ]; then
-    log "⏭  $repo 已在缓存中，跳过（删除 $cache_flag 可强制重新学习）"
+  # 已学习过则跳过，--force 模式除外
+  if [ -f "$cache_flag" ] && [ "$FORCE_LEARN" -eq 0 ]; then
+    log "⏭  $repo 已在缓存中，跳过（使用 --force 可强制重新学习）"
     return 0
   fi
 
   log "开始学习仓库：$repo"
 
+  # 检查 API 剩余次数，避免触发限流
+  check_rate_limit
+
   # ── 获取仓库基本信息 ──
   local meta
   meta=$(gh_api "repos/$repo") || { log "❌ 无法访问仓库 $repo"; return 1; }
+
+  # 检测 API 错误（如 404、403）
+  local api_msg
+  api_msg=$(echo "$meta" | jq -r '.message // ""' 2>/dev/null)
+  if [ -n "$api_msg" ]; then
+    log "❌ GitHub API 错误：$api_msg（仓库：$repo）"
+    return 1
+  fi
 
   local description stars lang updated
   description=$(echo "$meta" | jq -r '.description // "无描述"')
@@ -307,9 +340,17 @@ EOF
 
 case "${1:-help}" in
   learn)
-    [ -z "${2:-}" ] && { echo "用法：$0 learn <owner/repo 或 URL>"; exit 1; }
-    init_knowledge_file
-    learn_repo "$2"
+    # 支持 --force 标志：learn --force <repo> 或 learn <repo>
+    if [ "${2:-}" = "--force" ]; then
+      FORCE_LEARN=1
+      [ -z "${3:-}" ] && { echo "用法：$0 learn --force <owner/repo 或 URL>"; exit 1; }
+      init_knowledge_file
+      learn_repo "$3"
+    else
+      [ -z "${2:-}" ] && { echo "用法：$0 learn [--force] <owner/repo 或 URL>"; exit 1; }
+      init_knowledge_file
+      learn_repo "$2"
+    fi
     ;;
   search)
     [ -z "${2:-}" ] && { echo "用法：$0 search <关键词>"; exit 1; }
@@ -330,14 +371,16 @@ case "${1:-help}" in
     cat << 'EOF'
 龙虾知识提取器 — 用法：
 
-  repo-learner.sh learn <owner/repo>    学习指定仓库
-  repo-learner.sh search <关键词>       搜索并学习 Top 3 仓库
-  repo-learner.sh watchlist             学习观察列表里所有仓库
-  repo-learner.sh summary               显示知识库摘要
-  repo-learner.sh init                  初始化知识库文件
+  repo-learner.sh learn <owner/repo>           学习指定仓库
+  repo-learner.sh learn --force <owner/repo>   强制重新学习（忽略缓存）
+  repo-learner.sh search <关键词>              搜索并学习 Top 3 仓库
+  repo-learner.sh watchlist                    学习观察列表里所有仓库
+  repo-learner.sh summary                      显示知识库摘要
+  repo-learner.sh init                         初始化知识库文件
 
 示例：
   repo-learner.sh learn anthropics/claude-code
+  repo-learner.sh learn --force anthropics/claude-code
   repo-learner.sh search "python async web framework"
   repo-learner.sh watchlist
 EOF

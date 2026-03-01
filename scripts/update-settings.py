@@ -3,7 +3,7 @@
 update-settings.py — 合并更新 Claude Code settings.json
 安全地添加 MCP 服务和 SessionStart hook，不覆盖现有配置
 """
-import json, sys, os, shutil
+import json, sys, os, shutil, subprocess
 from datetime import datetime
 
 def find_mcp_server_github():
@@ -13,10 +13,17 @@ def find_mcp_server_github():
         shutil.which("mcp-server-github"),
         shutil.which("@modelcontextprotocol/server-github"),
     ]
-    # npm global bin 目录
-    npm_prefix = os.popen("npm prefix -g 2>/dev/null").read().strip()
-    if npm_prefix:
-        candidates.append(os.path.join(npm_prefix, "bin", "mcp-server-github"))
+    # npm global bin 目录（用 subprocess 替代废弃的 os.popen）
+    try:
+        result = subprocess.run(
+            ["npm", "prefix", "-g"],
+            capture_output=True, text=True, timeout=10
+        )
+        npm_prefix = result.stdout.strip()
+        if npm_prefix:
+            candidates.append(os.path.join(npm_prefix, "bin", "mcp-server-github"))
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass  # npm 不可用时静默跳过
 
     for path in candidates:
         if path and os.path.isfile(path):
@@ -27,11 +34,15 @@ def main():
     settings_path = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.claude/settings.json")
     hook_script   = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/.claude/scripts/session-start-hook.sh")
 
-    # 读取现有配置
+    # 读取现有配置（处理 JSON 解析错误）
     settings = {}
     if os.path.isfile(settings_path):
-        with open(settings_path) as f:
-            settings = json.load(f)
+        try:
+            with open(settings_path) as f:
+                settings = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"  ⚠ settings.json 格式错误（{e}），将从空配置开始重建")
+            settings = {}
 
     # 备份原文件
     if os.path.isfile(settings_path):

@@ -28,6 +28,10 @@ should_run() {
   [ ! -f "$state_file" ] && return 0
   local last
   last=$(cat "$state_file" 2>/dev/null || echo 0)
+  # 验证读取到的是合法的数字时间戳，防止文件损坏导致算术错误
+  if ! [[ "$last" =~ ^[0-9]+$ ]]; then
+    last=0
+  fi
   local now
   now=$(date +%s)
   [ $((now - last)) -gt "$interval" ]
@@ -78,6 +82,8 @@ update_watchlist() {
     date +%s > "$STATE_FILE"
     log "仓库知识库更新完成"
   ) &
+  # disown 确保父会话退出时后台子进程不被 SIGHUP 终止
+  disown $!
 
   # 仅输出一行，不输出详细日志
   echo "🦞 知识库后台更新中（不影响当前会话）"
