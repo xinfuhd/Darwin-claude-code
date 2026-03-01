@@ -44,7 +44,7 @@ parse_repo() {
 gh_api() {
   local path="$1"
   local args=(
-    curl -s
+    curl -s -L
     -H "Accept: application/vnd.github.v3+json"
     -H "User-Agent: darwin-claude-learner/1.0"
   )
