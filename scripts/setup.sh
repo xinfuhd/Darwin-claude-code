@@ -47,8 +47,12 @@ echo "▶ [3/5] 安装学习脚本..."
 mkdir -p "$CLAUDE_DIR/scripts"
 cp "$REPO_DIR/scripts/repo-learner.sh"       "$CLAUDE_DIR/scripts/"
 cp "$REPO_DIR/scripts/session-start-hook.sh"  "$CLAUDE_DIR/scripts/"
+cp "$REPO_DIR/scripts/daily-review.sh"        "$CLAUDE_DIR/scripts/"
 chmod +x "$CLAUDE_DIR/scripts/"*.sh
 echo "   ✓ 脚本已安装到 $CLAUDE_DIR/scripts/"
+
+# 初始化状态文件（避免第一次启动就触发复盘）
+touch "$CLAUDE_DIR/last-daily-review" 2>/dev/null || true
 
 # ── 4. 安装 repo 观察列表 ─────────────────────────────────────
 echo ""
@@ -82,3 +86,6 @@ echo ""
 echo "手动触发学习："
 echo "  $CLAUDE_DIR/scripts/repo-learner.sh learn <repo-url>"
 echo "  $CLAUDE_DIR/scripts/repo-learner.sh search '关键词'"
+echo ""
+echo "手动触发每日复盘："
+echo "  $CLAUDE_DIR/scripts/daily-review.sh"
