@@ -278,9 +278,9 @@ learn_watchlist() {
 
     # 检查是否是搜索查询（以 search: 开头）
     if [[ "$line" =~ ^search:(.+)$ ]]; then
-      search_and_learn "${BASH_REMATCH[1]}"
+      search_and_learn "${BASH_REMATCH[1]}" || log "⚠ 搜索 '${BASH_REMATCH[1]}' 失败，跳过"
     else
-      learn_repo "$line"
+      learn_repo "$line" || log "⚠ 学习 $line 失败，跳过"
     fi
     count=$((count + 1))
     sleep 1  # 避免触发 API 限速
