@@ -26,6 +26,7 @@ def find_mcp_server_github():
 def main():
     settings_path = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.claude/settings.json")
     hook_script   = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser("~/.claude/scripts/session-start-hook.sh")
+    provider      = sys.argv[3] if len(sys.argv) > 3 else ""   # "anthropic" | "openrouter" | ""
 
     # 读取现有配置
     settings = {}
@@ -77,6 +78,18 @@ def main():
         print(f"  ✓ 已添加 SessionStart hook")
     else:
         print("  - SessionStart hook 已存在，跳过")
+
+    # ── 设置默认 provider（避免 OpenRouter 意外成为默认）─────────
+    if provider == "anthropic":
+        # OAuth 或 Anthropic API Key：清除 OpenRouter 配置，确保走 Anthropic
+        settings.pop("provider", None)          # 移除显式 provider（OAuth 不需要指定）
+        settings["model"] = "claude-sonnet-4-6"
+        print("  ✓ 已设置默认模型 claude-sonnet-4-6（Provider: Anthropic）")
+    elif provider == "openrouter":
+        settings["provider"] = "openrouter"
+        settings["model"] = "anthropic/claude-sonnet-4-5"
+        print("  ✓ 已设置默认模型 anthropic/claude-sonnet-4-5（Provider: OpenRouter）")
+    # provider 为空时不修改 model/provider，保留现有配置
 
     # ── 保留 $schema ───────────────────────────────────────────
     if "$schema" not in settings:
