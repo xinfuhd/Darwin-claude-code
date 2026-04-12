@@ -202,96 +202,103 @@ du -sh ~/.claude/             # Claude 本地文件大小
 
 ---
 
-## 七、Hermes / OpenRouter — OAuth 登录与 401 认证失败
+## 七、Hermes 上 Claude OAuth 登录失败 & Provider 混乱
 
-> 症状：`/model sonnet` 后显示 `Provider: OpenRouter`，发消息报 HTTP 401 Missing Authentication header
+> 症状：想用 claude.ai 账号（OAuth）直连 Anthropic，但 `/model sonnet` 显示 `Provider: OpenRouter`，发消息报 HTTP 401
 
-### 背景：Hermes + OpenRouter 架构
+### 三种认证方式对比
 
-**Hermes** 是一类使用 OpenRouter 作为 LLM 后端的机器人/中间件服务（如 Telegram Bot、自建 Web UI 等）。架构：
+| 认证方式 | 适用场景 | 需要配置 | 模型 ID 格式 |
+|---------|---------|---------|------------|
+| **Claude OAuth**（推荐） | 有 claude.ai Pro/Team 订阅 | 浏览器登录一次即可 | `claude-sonnet-4-6` |
+| **Anthropic API Key** | 有 Anthropic API 账号 | `ANTHROPIC_API_KEY` 环境变量 | `claude-sonnet-4-6` |
+| **OpenRouter API Key** | 通过 OpenRouter 路由 | `OPENROUTER_API_KEY` 环境变量 | `anthropic/claude-sonnet-4` |
 
-```
-用户 → Hermes Bot → OpenRouter API → Claude 模型
-                         ↑
-                  需要 OPENROUTER_API_KEY
-```
+**如果 `/model sonnet` 显示 `Provider: OpenRouter`，且模型 ID 是 `anthropic/claude-sonnet-4`**（带斜杠前缀）：  
+说明当前环境路由到了 OpenRouter，而不是直连 Anthropic。
 
-当 Claude Code 默认 Provider 为 `openrouter` 时，模型 ID 格式为 `anthropic/claude-sonnet-4`（OpenRouter 格式），而非 `claude-sonnet-4-6`（Anthropic 原生格式）。
+---
 
-### 问题一：HTTP 401 Missing Authentication header
+### 方向 A：使用 Claude OAuth 直连 Anthropic（无 API Key，用 claude.ai 账号）
 
-**根本原因：`OPENROUTER_API_KEY` 未配置**
-
-```bash
-# 诊断
-echo $OPENROUTER_API_KEY   # 如果为空，就是这个问题
-```
-
-**解决方案：**
-
-1. 前往 https://openrouter.ai/keys 获取 API Key
-2. 写入环境变量：
-   ```bash
-   # 永久生效（写入 shell 配置）
-   echo "export OPENROUTER_API_KEY='sk-or-v1-xxx'" >> ~/.bashrc
-   source ~/.bashrc
-   ```
-3. 或者在 `~/.claude/settings.json` 中配置：
-   ```json
-   {
-     "env": {
-       "OPENROUTER_API_KEY": "sk-or-v1-xxx"
-     }
-   }
-   ```
-
-### 问题二：Hermes 上无法以 Claude OAuth 登录
-
-**原因分析：**
-
-Claude OAuth（claude.ai 账号）是 Anthropic 直接访问的认证方式。Hermes 使用 OpenRouter 路由，两者认证体系不同：
-
-| 认证方式 | 适用场景 | 环境变量 |
-|---------|---------|---------|
-| Claude OAuth | 直接访问 claude.ai/code | 由平台注入（fd），无需手动设置 |
-| Anthropic API Key | 直接调用 api.anthropic.com | `ANTHROPIC_API_KEY` |
-| OpenRouter API Key | 通过 OpenRouter 路由（含 Hermes） | `OPENROUTER_API_KEY` |
-
-如果 Hermes 使用的是 OpenRouter，则不支持 Claude OAuth 直登，必须使用 `OPENROUTER_API_KEY`。
-
-### 问题三：`/model sonnet --provider anthropic` 后仍失败
-
-在 OpenRouter 环境中，即使切换 provider，如果没有 `ANTHROPIC_API_KEY`（只有 `OPENROUTER_API_KEY`），仍然失败。
-
-**正确切换方式（OpenRouter 环境）：**
+在 Hermes 服务器上初次运行时完成 OAuth 授权：
 
 ```bash
-# ✅ 正确：在 OpenRouter 环境中指定 openrouter provider
-/model anthropic/claude-sonnet-4-5 --provider openrouter
-/model anthropic/claude-opus-4 --provider openrouter
+# 1. 退出旧的认证（如有）
+claude logout 2>/dev/null || true
 
-# ✅ 或者：不切换，直接使用默认 openrouter 配置
-# （确保 OPENROUTER_API_KEY 已设置即可正常使用）
+# 2. 重新登录，Claude Code 会输出一个 URL
+claude
+# 复制终端里输出的 URL，在浏览器打开，用 claude.ai 账号授权
 
-# ❌ 会失败（没有 ANTHROPIC_API_KEY）：
-/model sonnet --provider anthropic
+# 3. 授权成功后，再次运行并验证 Provider
+claude
+# 然后执行 /model 确认显示 Provider: Anthropic（而不是 OpenRouter）
 ```
+
+授权完成后，OAuth token 存储在 `~/.claude/`，之后每次启动自动使用，无需重复登录。
+
+**⚠ 注意：** 如果 Hermes 本身是 OpenRouter 架构（即它强制走 OpenRouter），则 Claude OAuth 在该 Hermes 实例中不可用，需联系 Hermes 服务管理员，或改用方向 B。
+
+---
+
+### 方向 B：使用 Anthropic API Key 直连（无需浏览器 OAuth）
+
+适合无法在服务器做 OAuth 流程的场景（纯命令行 VPS）：
+
+```bash
+# 1. 在 console.anthropic.com 生成 API Key
+# 2. 写入环境
+echo "export ANTHROPIC_API_KEY='sk-ant-api03-xxx'" >> ~/.bashrc
+source ~/.bashrc
+
+# 3. 验证 Provider
+claude
+# /model 应显示 Provider: Anthropic
+```
+
+---
+
+### 为什么 `/model sonnet` 默认显示 OpenRouter？
+
+可能原因：
+
+1. **之前执行了全局 provider 切换**：`/model sonnet --provider openrouter --global`  
+   修复：`/model sonnet --provider anthropic --global`（设置全局默认回 Anthropic）
+
+2. **OPENROUTER_API_KEY 已写入 shell 配置**，Claude Code 自动检测后使用  
+   修复：从 `~/.bashrc` / `~/.zshrc` 删除该行，然后 `source ~/.bashrc`
+
+3. **Hermes 服务本身是 OpenRouter 架构**  
+   修复：需要直接使用 OpenRouter Key，或换一个支持 OAuth 的 Claude 访问方式
+
+---
 
 ### 快速诊断脚本
 
 ```bash
 echo "=== Provider 认证状态检查 ==="
 if [ -n "$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST" ]; then
-  echo "✓ 平台托管认证（claude.ai/code 环境），无需配置 API Key"
-elif [ -n "$OPENROUTER_API_KEY" ]; then
-  echo "✓ OpenRouter Key 已配置：$(echo $OPENROUTER_API_KEY | cut -c1-15)..."
+  echo "✓ 平台托管认证（claude.ai/code 云端），无需配置"
 elif [ -n "$ANTHROPIC_API_KEY" ]; then
-  echo "✓ Anthropic API Key 已配置：$(echo $ANTHROPIC_API_KEY | cut -c1-15)..."
+  echo "✓ Anthropic API Key：$(echo $ANTHROPIC_API_KEY | cut -c1-20)..."
+elif [ -n "$OPENROUTER_API_KEY" ]; then
+  echo "⚠ OpenRouter Key：$(echo $OPENROUTER_API_KEY | cut -c1-20)... (非直连 Anthropic)"
 else
-  echo "❌ 未找到任何认证配置！"
-  echo "   → 如使用 OpenRouter/Hermes：配置 OPENROUTER_API_KEY"
-  echo "   → 如直连 Anthropic：配置 ANTHROPIC_API_KEY"
+  # 检查是否有 OAuth token
+  if ls ~/.claude/auth* 2>/dev/null || ls ~/.claude/.credentials* 2>/dev/null; then
+    echo "✓ 找到本地 OAuth token（Claude OAuth 登录状态）"
+  else
+    echo "❌ 未找到任何认证！"
+    echo "   → 直连 Anthropic（OAuth）：运行 'claude' 完成浏览器登录"
+    echo "   → 直连 Anthropic（API Key）：export ANTHROPIC_API_KEY='sk-ant-...'"
+    echo "   → 使用 OpenRouter：export OPENROUTER_API_KEY='sk-or-...'"
+  fi
 fi
+
+echo ""
+echo "=== 全局 Provider 设置 ==="
+grep -E '"provider"|"model"' ~/.claude/settings.json 2>/dev/null || echo "(未设置全局 provider)"
 ```
 
 ---
