@@ -25,8 +25,19 @@ should_update() {
   [ $((now - last_update)) -gt $UPDATE_INTERVAL ]
 }
 
+check_hermes_env() {
+  if [ -n "$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST" ]; then
+    log "检测到 Hermes 云端环境（CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST）"
+    echo "⚠ [Hermes 云端环境] Provider 由平台托管，请勿使用 /model --provider anthropic"
+    echo "  正确切换模型方式：/model sonnet  或  /model opus  （不加 --provider 参数）"
+  fi
+}
+
 main() {
   log "会话启动钩子触发"
+
+  # 检测 Hermes 云端环境，提前提示
+  check_hermes_env
 
   # 确保脚本可执行
   [ -f "$LEARNER" ] && chmod +x "$LEARNER"

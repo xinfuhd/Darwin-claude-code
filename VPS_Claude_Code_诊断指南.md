@@ -202,7 +202,91 @@ du -sh ~/.claude/             # Claude 本地文件大小
 
 ---
 
-## 七、联系支持 & 反馈
+## 七、Hermes（云端容器）环境 — OAuth 登录与 Provider 切换问题
+
+> 症状：OAuth 登录失败，或 `/model sonnet --provider anthropic` 切换后发消息报错
+
+### 背景：Hermes 环境是什么
+
+当 Claude Code 运行在 `claude.ai/code`（即 Hermes 云端容器）时，环境中会设置以下特殊变量：
+
+```
+CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1       ← Provider 由平台托管
+CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=4    ← OAuth token 通过 fd 传入
+CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE=cloud_default
+```
+
+这意味着：**认证（OAuth token）由 Hermes 平台通过文件描述符注入，而不是通过 `ANTHROPIC_API_KEY` 环境变量。**
+
+### 问题一：OAuth 登录失败
+
+**诊断：**
+```bash
+# 检查是否处于 host-managed 环境
+echo $CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST    # 应为 1
+echo $CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR  # 应有值（如 4）
+```
+
+**可能原因与解决方案：**
+
+| 原因 | 表现 | 解决方案 |
+|------|------|----------|
+| OAuth token 过期 | 登录后立即失效 | 关闭页面重新打开，刷新 OAuth session |
+| 平台 fd 注入失败 | 环境变量缺失 | 刷新页面，等待容器重新初始化 |
+| 会话过期 | 长时间不操作后失效 | 重新打开 claude.ai/code 页面 |
+
+### 问题二：`/model sonnet --provider anthropic` 切换后无法使用
+
+**根本原因：**
+
+在 `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1` 环境中：
+
+- 默认认证 = Hermes 平台注入的 OAuth token（fd 4）
+- `--provider anthropic` = 尝试绕过平台，直接用 `ANTHROPIC_API_KEY`
+- 但 `ANTHROPIC_API_KEY` 未设置 → 切换后发消息失败
+
+```
+Warning: Could not reach the Anthropic API to validate claude-sonnet-4-6.
+# 这个警告意味着已经在尝试直接调用 API，而非通过平台认证
+```
+
+**正确做法：在 Hermes 环境中切换模型，不要加 `--provider` 参数：**
+
+```bash
+# ✅ 正确：不指定 provider，使用平台托管的认证
+/model sonnet
+/model opus
+/model haiku
+
+# ❌ 错误：强制切换到直接 API 模式，在 Hermes 中会失败
+/model sonnet --provider anthropic
+```
+
+**若需全局固定模型，在 `settings.json` 中设置（不要设置 provider）：**
+
+```json
+{
+  "model": "claude-sonnet-4-6"
+}
+```
+
+### 快速诊断脚本
+
+```bash
+# 检测当前是否为 Hermes 云端环境
+if [ -n "$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST" ]; then
+  echo "⚠ 检测到 Hermes 云端环境（Provider 由平台托管）"
+  echo "  → 请勿使用 /model --provider anthropic"
+  echo "  → OAuth token 由平台通过 fd $CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR 注入"
+else
+  echo "✓ 标准环境，可自由切换 Provider"
+  echo "  ANTHROPIC_API_KEY: $(echo $ANTHROPIC_API_KEY | cut -c1-10)..."
+fi
+```
+
+---
+
+## 八、联系支持 & 反馈
 
 - Claude Code 官方 Issues：https://github.com/anthropics/claude-code/issues
 - 运行 `/doctor` 命令做自动诊断（如果版本支持）
@@ -210,4 +294,4 @@ du -sh ~/.claude/             # Claude 本地文件大小
 
 ---
 
-*本指南创建于 2026-02-27，针对 VPS 部署的 Claude Code 性能与记忆问题*
+*本指南创建于 2026-02-27，更新于 2026-04-12，针对 VPS 部署和 Hermes 云端 Claude Code 性能、认证与记忆问题*
