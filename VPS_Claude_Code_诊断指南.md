@@ -210,4 +210,107 @@ du -sh ~/.claude/             # Claude 本地文件大小
 
 ---
 
+## 八、OAuth 认证问题（Claude Pro/Max subscription）
+
+> 症状：在 Hermes 或 Claude Code CLI 中选择 Anthropic → Claude Pro/Max subscription (OAuth login)，完成授权后仍无法正常使用。
+
+---
+
+### 根本原因分析
+
+| # | 原因 | 说明 |
+|---|------|------|
+| 1 | **`ANTHROPIC_API_KEY` 环境变量冲突** | 若 VPS 上设置了此变量，它会**覆盖 OAuth token**，导致用 Pro/Max token 认证失败 |
+| 2 | **模型不在 Pro/Max 订阅范围内** | `settings.json` 里指定的 model 可能是 API 计费模型，Pro/Max 订阅不覆盖，请求直接被拒绝 |
+| 3 | **API 端点不匹配** | Pro/Max OAuth 访问的是 `api.claude.ai`，而 API Key 访问的是 `api.anthropic.com`；工具配置错端点时认证会失败 |
+| 4 | **VPS 无浏览器，OAuth 回调丢失** | OAuth 需要浏览器完成重定向；VPS headless 环境下重定向 URL 可能无法被客户端捕获，token 未被正确存储 |
+| 5 | **OAuth token 未持久化** | token 存储在 `~/.claude/.credentials.json`；若文件不存在或权限错误，每次重启后认证状态丢失 |
+
+---
+
+### 诊断步骤
+
+```bash
+# 1. 检查是否有 API Key 环境变量覆盖 OAuth token（最常见原因）
+echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:0:10}..."
+# 如果有值 → 这是问题所在，需要 unset
+
+# 2. 检查 OAuth token 是否已存储
+ls -la ~/.claude/.credentials.json 2>/dev/null && echo "token 已存储" || echo "token 不存在"
+cat ~/.claude/.credentials.json 2>/dev/null | python3 -m json.tool | grep -E '"type"|"expires"'
+
+# 3. 检查当前配置的端点和模型
+cat ~/.claude/settings.json 2>/dev/null
+
+# 4. 检查 claude 认证状态
+claude auth status 2>/dev/null || echo "不支持此命令，请检查版本"
+```
+
+---
+
+### 修复方案
+
+#### 方案 A：清除冲突的 API Key（最常见修复）
+
+```bash
+# 临时 unset（当前 shell 生效）
+unset ANTHROPIC_API_KEY
+
+# 永久移除（从 ~/.bashrc 或 ~/.zshrc 中删除）
+sed -i '/ANTHROPIC_API_KEY/d' ~/.bashrc ~/.zshrc 2>/dev/null
+
+# 重新登录
+claude auth login
+```
+
+#### 方案 B：VPS 无浏览器时完成 OAuth（headless 方式）
+
+```bash
+# 1. 在 VPS 上启动登录，获取授权 URL
+claude auth login
+# 程序会输出一个 https://claude.ai/... 的 URL
+
+# 2. 复制该 URL，在本地浏览器中打开并完成授权
+
+# 3. 授权完成后，浏览器会跳转到 http://localhost:... 的回调地址
+#    复制完整的回调 URL，粘贴回 VPS 终端
+```
+
+#### 方案 C：Pro/Max 订阅可用的模型配置
+
+```bash
+# Pro/Max 订阅通过 OAuth 可用的模型（不需要 API 计费）
+cat > ~/.claude/settings.json << 'EOF'
+{
+  "model": "claude-sonnet-4-6"
+}
+EOF
+# 注意：不要在 settings.json 里设置 apiKey 字段，否则会绕过 OAuth
+```
+
+#### 方案 D：完全重置认证状态
+
+```bash
+# 清除所有认证信息，重新开始
+claude auth logout 2>/dev/null
+rm -f ~/.claude/.credentials.json
+unset ANTHROPIC_API_KEY
+
+# 重新通过 OAuth 登录
+claude auth login
+```
+
+---
+
+### 验证认证是否正常
+
+```bash
+# 发送一条简单消息，测试是否能通
+claude -p "你好，回复'认证成功'"
+```
+
+若返回正常响应，说明 OAuth 认证已修复。
+
+---
+
 *本指南创建于 2026-02-27，针对 VPS 部署的 Claude Code 性能与记忆问题*
