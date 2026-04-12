@@ -25,19 +25,25 @@ should_update() {
   [ $((now - last_update)) -gt $UPDATE_INTERVAL ]
 }
 
-check_hermes_env() {
+check_auth_env() {
   if [ -n "$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST" ]; then
-    log "检测到 Hermes 云端环境（CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST）"
-    echo "⚠ [Hermes 云端环境] Provider 由平台托管，请勿使用 /model --provider anthropic"
-    echo "  正确切换模型方式：/model sonnet  或  /model opus  （不加 --provider 参数）"
+    # claude.ai/code 云端环境：认证由平台托管
+    log "检测到平台托管认证环境（CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1）"
+  elif [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENROUTER_API_KEY" ]; then
+    # 没有任何 API Key 配置
+    log "警告：未找到 LLM API Key（ANTHROPIC_API_KEY 和 OPENROUTER_API_KEY 均未设置）"
+    echo "⚠ 未找到 LLM API Key，Claude Code 可能无法正常使用"
+    echo "  → 如使用 Hermes/OpenRouter：export OPENROUTER_API_KEY='sk-or-v1-xxx'"
+    echo "  → 如直连 Anthropic：        export ANTHROPIC_API_KEY='sk-ant-xxx'"
+    echo "  → 运行安装脚本重新配置：    ~/.claude/scripts/setup.sh"
   fi
 }
 
 main() {
   log "会话启动钩子触发"
 
-  # 检测 Hermes 云端环境，提前提示
-  check_hermes_env
+  # 检测认证环境，提前提示
+  check_auth_env
 
   # 确保脚本可执行
   [ -f "$LEARNER" ] && chmod +x "$LEARNER"
